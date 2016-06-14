@@ -6,12 +6,15 @@ require(ggplot2)
 #source("D:/mystuff/myshiny/test1/AppComboBay/VectorFit.R")
 source("VectorFit.R")
 source("source.R")
-server <- function(input, output,session){
+#source("installshinesky.R")
+require(shinysky)
+
+server <- function(input, output, session){
   myData <- reactive({
     inFile <- input$file1
   
     if (is.null(inFile))
-      return(NULL)
+      return(read.csv("./trail.csv"))  
   
     mytable<- read.csv(inFile$datapath, header=input$header, sep=input$sep, 
                      quote=input$quote)
@@ -26,8 +29,7 @@ server <- function(input, output,session){
 
 
   output$summary1 <- renderPrint({
-   # summary(myData()), 
-    matrix(myData()$y/myData()$n, input$combos,input$backbones) 
+     matrix(myData()$y/myData()$n, input$combos,input$backbones) 
   })
   
   
@@ -38,29 +40,28 @@ server <- function(input, output,session){
  
 
    modstrInput <- reactive({
-     switch(input$select, "Auto"=modlist,
+     switch(input$select, "AutoSelection"=modlist,
             "Hierarchy"=modfix)
    })
-
+    
+     
+   
       fit <- reactive({
         
         cn <- input$combos
         bn <- input$backbones
         compound <- rep(c(1:cn),bn)
         backbone <- rep(1:bn, each=cn)
-        
         nmatrix <- matrix(myData()$n,cn,bn)
         ymatrix <- matrix(myData()$y,cn,bn)
         
         xlist<- list('y'=ymatrix,'n'=nmatrix,'cn' = cn, 'bn'=bn)  
         output<- VecFit(modstr=modstrInput(), xlist=xlist)
-
-      
-      armctn <- output[[1]] 
-      predp <- output[[2]]
-      mod.select <- output[[3]]
-      test<- data.frame(compound, backbone, armctn,predp,mod.select)
-      test
+        armctn <- output[[1]] 
+        predp <- output[[2]]
+        mod.select <- output[[3]]
+        test<- data.frame(compound, backbone, armctn,predp,mod.select)
+        test
       })
       
     
@@ -75,10 +76,9 @@ server <- function(input, output,session){
      
      simufit <- eventReactive(
        input$sim.start, {
-         cn.sim <- input$combos
-         bn.sim <- input$backbones
-         para<- myData()$Phat 
-        #   rep(c(0.1,0.5,0.8),4)
+         cn.sim <- input$combos.sim
+         bn.sim <- input$backbones.sim
+         para<- df()$predp 
          k.itm <- input$k.itm
          stop.itm <- input$stop.itm
          nsubj <- rep(input$npitm, k.itm)
@@ -86,10 +86,40 @@ server <- function(input, output,session){
          }
      )
      
+     simplot <- eventReactive(
+        input$sim.start,{
+       
+          cn <- input$combos.sim
+          bn <- input$backbones.sim
+          compound <- rep(c(1:cn),bn)
+          backbone <- rep(1:bn, each=cn)
+          data<- data.frame(compound, backbone, "armctn"=simufit()[[1]],
+                         "predp"=simufit()[[2]], "Nsubj"=simufit()[[4]])
+          data
+     })
      
      output$summary3 <- renderPrint({ 
            simufit()
      })
      
+     output$plotsim <-  renderPlot({
+       a<- ggplot(simplot(), aes(x=backbone, y= predp))+ geom_point(aes(colour = factor(compound)),size=3)+
+           geom_point(data=simplot()[simplot()$armctn==0,],shape=4,size=6)
+       a
+     })
      
+     output$hotable1 <- renderHotable({
+        cn <- input$combos.sim
+        bn <- input$backbones.sim
+        compound <- rep(c(1:cn),bn)
+        backbone <- rep(1:bn, each=cn)
+        data<- data.frame(compound, backbone,
+                       "predp"=0.5)
+     }, readOnly = FALSE)
+     
+     addPopover(session, id="hotable1", "enter event rate in column predp",  placement = "buttom")
+     
+     df <- reactive(hot.to.df(input$hotable1))
+     
+
 }
